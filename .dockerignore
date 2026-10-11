@@ -1,0 +1,7 @@
+target/
+.git/
+.idea/
+.vscode/
+local.properties
+.env
+*.log

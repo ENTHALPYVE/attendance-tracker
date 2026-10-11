@@ -1,0 +1,99 @@
+/*
+ * Builds the page frame shared by every screen after login:
+ * sidebar on desktop, top bar + bottom navigation on mobile.
+ *
+ * Usage in a page:   const user = await Layout.init('home');
+ */
+const Layout = (() => {
+
+    // Navigation items. "roles" says who sees the item.
+    // More items are added here as each phase adds screens.
+    const NAV = [
+        { key: 'home', label: 'Today', href: '/index.html', icon: 'calendar-days', roles: ['ADMIN', 'TEACHER'] },
+        { key: 'day', label: 'Day view', href: '/class-day.html', icon: 'calendar-range', roles: ['ADMIN', 'TEACHER'] },
+        { key: 'reports', label: 'Reports', href: '/reports.html', icon: 'file-text', roles: ['ADMIN', 'TEACHER'] },
+        { key: 'classes', label: 'Classes', href: '/admin/classes.html', icon: 'users', roles: ['ADMIN'] },
+        { key: 'timetable', label: 'Timetable', href: '/admin/timetable.html', icon: 'table', roles: ['ADMIN'] },
+        { key: 'subjects', label: 'Subjects', href: '/admin/subjects.html', icon: 'book-open', roles: ['ADMIN'] },
+        { key: 'teachers', label: 'Teachers', href: '/admin/teachers.html', icon: 'id-card', roles: ['ADMIN'] },
+        { key: 'settings', label: 'Settings', href: '/admin/settings.html', icon: 'settings', roles: ['ADMIN'] },
+    ];
+
+    function esc(text) {
+        const div = document.createElement('div');
+        div.textContent = text == null ? '' : String(text);
+        return div.innerHTML;
+    }
+
+    function navLinks(items, active, className) {
+        return items.map(item => `
+            <a class="${className}${item.key === active ? ' active' : ''}" href="${item.href}">
+                <i data-lucide="${item.icon}"></i><span>${esc(item.label)}</span>
+            </a>`).join('');
+    }
+
+    async function logout() {
+        try {
+            await Api.logout();
+        } finally {
+            window.location.href = '/login.html';
+        }
+    }
+
+    /**
+     * options.adminOnly: send teachers back to the home page. (This is only for convenience;
+     * the API itself refuses admin requests from teachers.)
+     */
+    async function init(active, options = {}) {
+        const user = await Api.get('/api/auth/me');
+        if (options.adminOnly && user.role !== 'ADMIN') {
+            window.location.href = '/index.html';
+            throw new Error('Admin only');
+        }
+        const items = NAV.filter(item => item.roles.includes(user.role));
+        const roleLabel = user.role === 'ADMIN' ? 'Admin' : 'Teacher';
+
+        document.body.insertAdjacentHTML('afterbegin', `
+            <aside class="sidebar">
+                <div class="brand">Attendance Tracker<small>${roleLabel}</small></div>
+                <nav>${navLinks(items, active, 'nav-link')}</nav>
+                <div class="sidebar-footer">
+                    <div class="user-name">${esc(user.name)}</div>
+                    <div class="muted">${esc(user.email)}</div>
+                    <button class="btn-link" id="logout-btn" type="button">Log out</button>
+                </div>
+            </aside>
+            <header class="topbar">
+                <span>Attendance Tracker</span>
+                <button class="btn-link" id="logout-btn-mobile" type="button">Log out</button>
+            </header>`);
+        // Phones: at most 5 places in the bottom bar; the rest go under "More".
+        const shown = items.length > 5 ? items.slice(0, 4) : items;
+        const extra = items.length > 5 ? items.slice(4) : [];
+        const moreActive = extra.some(item => item.key === active);
+        document.body.insertAdjacentHTML('beforeend', `
+            <nav class="bottom-nav">
+                ${navLinks(shown, active, '')}
+                ${extra.length ? `<a href="#" id="more-btn" class="${moreActive ? 'active' : ''}" aria-expanded="false">
+                    <i data-lucide="menu"></i><span>More</span></a>` : ''}
+            </nav>
+            ${extra.length ? `<div class="more-menu" id="more-menu" hidden>${navLinks(extra, active, 'nav-link')}</div>` : ''}`);
+        const moreBtn = document.getElementById('more-btn');
+        if (moreBtn) {
+            moreBtn.addEventListener('click', (event) => {
+                event.preventDefault();
+                const menu = document.getElementById('more-menu');
+                menu.hidden = !menu.hidden;
+                moreBtn.setAttribute('aria-expanded', String(!menu.hidden));
+            });
+        }
+
+        document.getElementById('logout-btn').addEventListener('click', logout);
+        document.getElementById('logout-btn-mobile').addEventListener('click', logout);
+        lucide.createIcons();
+        if (typeof UI !== 'undefined') UI.showFlash();   // e.g. "Attendance saved"
+        return user;
+    }
+
+    return { init, esc };
+})();

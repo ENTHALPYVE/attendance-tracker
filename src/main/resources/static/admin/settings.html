@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2F5D50">
+    <link rel="icon" type="image/png" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <script src="/js/pwa.js" defer></script>
+    <title>Settings · Attendance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="main">
+    <div class="page-header">
+        <div>
+            <h1>Settings</h1>
+            <p>Attendance rules and holidays.</p>
+        </div>
+    </div>
+
+    <section class="section card">
+        <h2>Attendance rules</h2>
+        <form id="rules-form" class="rules-form" novalidate>
+            <div class="alert alert-error form-error" hidden></div>
+            <div class="form-row">
+                <div class="field">
+                    <label for="threshold">Minimum attendance (%)</label>
+                    <input class="input" id="threshold" name="threshold" type="number" min="50" max="95">
+                    <div class="field-hint">Below this a student is a defaulter; up to 5% above it is "at risk".</div>
+                </div>
+                <div class="field">
+                    <label for="semesterStart">Semester starts on</label>
+                    <input class="input" id="semesterStart" name="semesterStart" type="date">
+                    <div class="field-hint">"Overall" reports start here; no sessions are created before it.</div>
+                </div>
+            </div>
+            <div class="field">
+                <label class="check"><input type="checkbox" id="countFreeSlotsAsPresent" name="countFreeSlotsAsPresent">
+                    Count free slots as present</label>
+                <div class="field-hint">A free slot is a slot where the student's batch has no session while other
+                    batches are in labs. When ticked, each free slot counts as one attended session in day-wise and overall figures.</div>
+            </div>
+            <button class="btn btn-primary" type="submit">Save rules</button>
+        </form>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <h2>Holidays</h2>
+            <button class="btn btn-primary" id="add-holiday-btn" type="button"><i data-lucide="plus"></i>Add holiday</button>
+        </div>
+        <div class="card flush">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Date</th><th>Reason</th><th class="num hide-sm">Sessions cancelled</th><th class="actions"></th></tr></thead>
+                    <tbody id="holidays"></tbody>
+                </table>
+            </div>
+        </div>
+        <p class="small muted">On a holiday every timetable session of that date is cancelled, so it does not count.
+            Deleting the holiday reopens those sessions.</p>
+    </section>
+</main>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/layout.js"></script>
+<script src="/js/sessions.js"></script>
+<script>
+    const esc = UI.esc;
+    let holidays = [];
+
+    async function loadRules() {
+        const s = await Api.get('/api/settings');
+        const form = document.getElementById('rules-form');
+        form.threshold.value = s.threshold;
+        form.semesterStart.value = s.semesterStart || '';
+        form.countFreeSlotsAsPresent.checked = s.countFreeSlotsAsPresent;
+    }
+
+    document.getElementById('rules-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = event.target;
+        const button = form.querySelector('[type=submit]');
+        button.disabled = true;
+        try {
+            await Api.put('/api/admin/settings', {
+                threshold: Number(form.threshold.value),
+                semesterStart: form.semesterStart.value || null,
+                countFreeSlotsAsPresent: form.countFreeSlotsAsPresent.checked,
+            });
+            form.querySelector('.form-error').hidden = true;
+            form.querySelectorAll('.field-error').forEach(el => el.remove());
+            UI.notice('Rules saved. Reports now use them.');
+        } catch (error) {
+            const box = form.querySelector('.form-error');
+            const fields = (error.data && error.data.fieldErrors) || {};
+            box.textContent = Object.values(fields).join(' ') || error.message;
+            box.hidden = false;
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    async function loadHolidays() {
+        holidays = await Api.get('/api/admin/holidays');
+        const body = document.getElementById('holidays');
+        body.innerHTML = holidays.map(h => `
+            <tr>
+                <td class="nowrap">${new Date(h.date + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                <td>${esc(h.reason)}</td>
+                <td class="num hide-sm">${h.cancelledSessions}</td>
+                <td class="actions">
+                    <button class="icon-btn danger" data-delete="${h.id}" title="Delete" aria-label="Delete holiday ${esc(h.reason)}"><i data-lucide="trash-2"></i></button>
+                </td>
+            </tr>`).join('') || '<tr><td colspan="4" class="empty">No holidays yet.</td></tr>';
+        UI.icons();
+    }
+
+    document.getElementById('add-holiday-btn').addEventListener('click', () => {
+        UI.formDialog({
+            title: 'Add holiday',
+            body: `
+                <div class="field">
+                    <label for="date">Date</label>
+                    <input class="input" id="date" name="date" type="date">
+                </div>
+                <div class="field">
+                    <label for="reason">Reason</label>
+                    <input class="input" id="reason" name="reason" maxlength="150" placeholder="Diwali">
+                </div>`,
+            onSubmit: async (form) => {
+                const h = await Api.post('/api/admin/holidays', { date: form.date.value || null, reason: form.reason.value });
+                UI.notice(h.cancelledSessions ? `Holiday added; ${h.cancelledSessions} sessions cancelled.` : 'Holiday added.');
+                await loadHolidays();
+            },
+        });
+    });
+
+    document.getElementById('holidays').addEventListener('click', async (event) => {
+        const btn = event.target.closest('[data-delete]');
+        if (!btn) return;
+        const h = holidays.find(x => x.id === Number(btn.dataset.delete));
+        if (await UI.confirm(`Delete the holiday on ${Sessions.formatDate(h.date)} (${h.reason})? Its sessions will be reopened.`)) {
+            await UI.run(() => Api.del(`/api/admin/holidays/${h.id}`), 'Holiday deleted.');
+            await loadHolidays();
+        }
+    });
+
+    (async () => {
+        await Layout.init('settings', { adminOnly: true });
+        await Promise.all([loadRules(), loadHolidays()]);
+    })();
+</script>
+</body>
+</html>

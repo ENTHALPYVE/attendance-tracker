@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2F5D50">
+    <link rel="icon" type="image/png" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <script src="/js/pwa.js" defer></script>
+    <title>Student · Attendance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="main">
+    <a class="back-link" id="back-link" href="/reports.html"><i data-lucide="arrow-left"></i>Class report</a>
+    <div class="page-header">
+        <div>
+            <h1 id="name">Student</h1>
+            <p id="meta"></p>
+        </div>
+        <div class="toolbar">
+            <div class="tabs tabs-inline" role="tablist">
+                <button class="tab" role="tab" data-period="OVERALL" type="button">Overall</button>
+                <button class="tab" role="tab" data-period="MONTH" type="button">Month</button>
+            </div>
+            <input class="input" id="month-input" type="month" aria-label="Month" hidden>
+        </div>
+    </div>
+
+    <section class="section summary-grid">
+        <div class="card stat">
+            <div class="label" id="period-label">Overall</div>
+            <div class="value big"><span id="overall-pct">–</span><span class="unit">%</span></div>
+            <div id="overall-status"></div>
+        </div>
+        <div class="card">
+            <div class="label small muted">Sessions</div>
+            <div class="value-line"><strong class="num" id="attended">0</strong> attended of <strong class="num" id="held">0</strong></div>
+            <p id="advice" class="advice"></p>
+        </div>
+    </section>
+
+    <section class="section card">
+        <div class="section-head">
+            <h2>Day by day</h2>
+            <div class="cal-legend small">
+                <span><i class="cal-swatch cal-safe"></i>Safe</span>
+                <span><i class="cal-swatch cal-risk"></i>At risk</span>
+                <span><i class="cal-swatch cal-low"></i>Below threshold</span>
+                <span><i class="cal-swatch"></i>No sessions</span>
+            </div>
+        </div>
+        <div id="calendar" class="calendar"></div>
+        <p class="small muted" id="day-detail">Tap a day to see the details.</p>
+    </section>
+
+    <section class="section card flush">
+        <div class="section-head pad"><h2>Subjects</h2></div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr><th>Subject</th><th class="num">Theory</th><th class="num">Lab</th><th class="num">Combined</th><th></th></tr>
+                </thead>
+                <tbody id="subjects"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="section chart-grid">
+        <div class="card">
+            <h2>Combined % by subject</h2>
+            <div class="chart-box"><canvas id="subject-chart" aria-label="Combined attendance percentage by subject" role="img"></canvas></div>
+        </div>
+        <div class="card">
+            <h2>Weekly trend</h2>
+            <div class="chart-box"><canvas id="trend-chart" aria-label="Attendance percentage week by week" role="img"></canvas></div>
+        </div>
+    </section>
+</main>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/layout.js"></script>
+<script src="/js/sessions.js"></script>
+<script>
+    const esc = UI.esc;
+    const $ = (id) => document.getElementById(id);
+    const studentId = UI.queryParam('id');
+    let report = null;
+    let period = UI.queryParam('period') === 'MONTH' ? 'MONTH' : 'OVERALL';
+    let charts = [];
+
+    // The app's palette: one muted accent, text tokens for labels, a recessive grid.
+    const COLORS = {
+        accent: '#2F5D50', context: '#8C877C', text: '#2B2B2B', muted: '#6B6862', grid: '#ECE9E2', line: '#CFCAC0',
+    };
+    const pct = (p) => p == null ? '–' : p.toFixed(1);
+
+    function statusBadge(status) {
+        switch (status) {
+            case 'DEFAULTER': return '<span class="badge badge-red">Defaulter</span>';
+            case 'AT_RISK': return '<span class="badge badge-amber">At risk</span>';
+            case 'SAFE': return '<span class="badge badge-green">Safe</span>';
+            default: return '<span class="badge">No sessions yet</span>';
+        }
+    }
+
+    // ------------------------------------------------------------ loading
+
+    async function load() {
+        const p = new URLSearchParams({ period });
+        if (period === 'MONTH') p.set('month', $('month-input').value);
+        report = await Api.get(`/api/reports/students/${studentId}?${p}`);
+        history.replaceState(null, '', `?id=${studentId}&${p}`);
+        drawSummary();
+        drawCalendar();
+        drawSubjects();
+        drawCharts();
+        UI.icons();
+    }
+
+    function drawSummary() {
+        const r = report, o = r.overall;
+        document.title = `${r.name} · Attendance Tracker`;
+        $('name').textContent = r.name;
+        $('meta').textContent = `Roll No ${r.rollNo} · ${r.className} · Batch ${r.batchName}`;
+        $('back-link').href = `/reports.html?classId=${r.classId}&tab=${period === 'MONTH' ? 'month' : 'overall'}`
+            + (period === 'MONTH' ? `&month=${$('month-input').value}` : '');
+        $('period-label').textContent = `${r.title} · ${Sessions.formatDate(r.from, true)} – ${Sessions.formatDate(r.to, true)}`;
+        $('overall-pct').textContent = pct(o.percent);
+        $('overall-status').innerHTML = statusBadge(o.status);
+        $('attended').textContent = o.attended;
+        $('held').textContent = o.held;
+
+        let advice = '';
+        if (o.needed != null) {
+            advice = `Needs to attend <strong>${o.needed}</strong> more ${o.needed === 1 ? 'session' : 'sessions'} in a row to reach ${r.threshold}%.`;
+        } else if (o.canMiss != null) {
+            advice = o.canMiss === 0
+                ? `Exactly at the limit: missing the next session would drop below ${r.threshold}%.`
+                : `Can miss <strong>${o.canMiss}</strong> ${o.canMiss === 1 ? 'session' : 'sessions'} and still stay at or above ${r.threshold}%.`;
+        }
+        const low = r.subjects.filter(s => s.defaulter).map(s => s.code);
+        if (low.length) advice += ` Below ${r.threshold}% in ${low.map(esc).join(', ')}.`;
+        $('advice').innerHTML = advice || 'No sessions have been marked yet.';
+    }
+
+    // ------------------------------------------------------------ calendar
+
+    function drawCalendar() {
+        const byDate = new Map(report.days.map(d => [d.date, d]));
+        const start = new Date(report.from + 'T00:00:00');
+        const end = new Date(report.to + 'T00:00:00');
+        let html = '';
+        for (let m = new Date(start.getFullYear(), start.getMonth(), 1); m <= end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+            html += monthHtml(m, byDate);
+        }
+        $('calendar').innerHTML = html || '<p class="muted">No days in this period.</p>';
+        $('day-detail').textContent = 'Tap a day to see the details.';
+    }
+
+    function monthHtml(first, byDate) {
+        const title = first.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+        const offset = (first.getDay() + 6) % 7;   // Monday = 0
+        const days = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+        let cells = '';
+        for (let i = 0; i < offset; i++) cells += '<span class="cal-day empty"></span>';
+        for (let d = 1; d <= days; d++) {
+            const iso = `${first.getFullYear()}-${String(first.getMonth() + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const info = byDate.get(iso);
+            const cls = !info ? '' : info.status === 'SAFE' ? 'cal-safe' : info.status === 'AT_RISK' ? 'cal-risk' : info.status === 'DEFAULTER' ? 'cal-low' : '';
+            const label = info ? `${Sessions.formatDate(iso, true)}: ${info.attended}/${info.held} (${pct(info.percent)}%)` : Sessions.formatDate(iso, true);
+            cells += info
+                ? `<button type="button" class="cal-day ${cls}" data-date="${iso}" title="${esc(label)}" aria-label="${esc(label)}">${d}</button>`
+                : `<span class="cal-day" aria-hidden="true">${d}</span>`;
+        }
+        return `
+            <div class="cal-month">
+                <div class="cal-title">${title}</div>
+                <div class="cal-grid">
+                    ${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(w => `<span class="cal-head">${w}</span>`).join('')}
+                    ${cells}
+                </div>
+            </div>`;
+    }
+
+    $('calendar').addEventListener('click', (event) => {
+        const day = event.target.closest('[data-date]');
+        if (!day) return;
+        const d = report.days.find(x => x.date === day.dataset.date);
+        let text = `${Sessions.formatDate(d.date)}: attended ${d.attended} of ${d.held} (${pct(d.percent)}%).`;
+        if (d.freeSlots) text += ` ${d.freeSlots} free ${d.freeSlots === 1 ? 'slot' : 'slots'}${report.countFreeSlotsAsPresent ? ' (counted as present)' : ''}.`;
+        text += d.absentIn.length ? ` Absent in: ${d.absentIn.join(', ')}.` : ' Present in every session.';
+        $('day-detail').textContent = text;
+    });
+
+    // ------------------------------------------------------------ subjects table
+
+    function drawSubjects() {
+        const t = report.threshold;
+        const cell = (a, h, p) => h ? `<span class="${p < t ? 'below-text' : ''}">${pct(p)}%</span> <span class="small muted">${a}/${h}</span>` : '<span class="muted">–</span>';
+        $('subjects').innerHTML = report.subjects.map(s => `
+            <tr>
+                <td><strong>${esc(s.code)}</strong> <span class="small muted">${esc(s.name)}</span></td>
+                <td class="num">${cell(s.theoryAttended, s.theoryHeld, s.theoryPercent)}</td>
+                <td class="num">${cell(s.labAttended, s.labHeld, s.labPercent)}</td>
+                <td class="num">${cell(s.combinedAttended, s.combinedHeld, s.combinedPercent)}</td>
+                <td>${s.defaulter ? '<span class="badge badge-red">Defaulter</span>' : ''}</td>
+            </tr>`).join('') || '<tr><td colspan="5" class="empty">No sessions in this period.</td></tr>';
+    }
+
+    // ------------------------------------------------------------ charts (Chart.js)
+
+    function drawCharts() {
+        charts.forEach(c => c.destroy());
+        charts = [];
+        Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = COLORS.muted;
+
+        const t = report.threshold;
+        const percentAxis = {
+            min: 0, max: 100,
+            ticks: { stepSize: 25, callback: (v) => v + '%' },
+            grid: { color: COLORS.grid }, border: { display: false },
+        };
+        const tooltip = {
+            backgroundColor: '#FFFFFF', titleColor: COLORS.text, bodyColor: COLORS.text,
+            borderColor: COLORS.line, borderWidth: 1, padding: 8, displayColors: false,
+        };
+        const thresholdLine = (labels) => ({
+            type: 'line', label: `${t}% threshold`, data: labels.map(() => t),
+            borderColor: COLORS.muted, borderWidth: 1, borderDash: [4, 4], pointRadius: 0, pointHitRadius: 0,
+        });
+
+        // Bar chart: combined % per subject (one series, so no legend box), with the threshold line.
+        const subjects = report.subjects;
+        const labels = subjects.map(s => s.code);
+        charts.push(new Chart($('subject-chart'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    { label: 'Combined %', data: subjects.map(s => s.combinedPercent), backgroundColor: COLORS.accent,
+                      borderRadius: 4, maxBarThickness: 28 },
+                    thresholdLine(labels),
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        ...tooltip,
+                        filter: (item) => item.datasetIndex === 0,
+                        callbacks: {
+                            title: (items) => `${subjects[items[0].dataIndex].code} – ${subjects[items[0].dataIndex].name}`,
+                            label: (item) => {
+                                const s = subjects[item.dataIndex];
+                                const lines = [`Combined ${pct(s.combinedPercent)}% (${s.combinedAttended}/${s.combinedHeld})`];
+                                if (s.theoryHeld) lines.push(`Theory ${pct(s.theoryPercent)}% (${s.theoryAttended}/${s.theoryHeld})`);
+                                if (s.labHeld) lines.push(`Lab ${pct(s.labPercent)}% (${s.labAttended}/${s.labHeld})`);
+                                return lines;
+                            },
+                        },
+                    },
+                },
+                scales: { y: percentAxis, x: { grid: { display: false }, border: { color: COLORS.line } } },
+            },
+        }));
+
+        // Line chart: % each week and the running total, with the threshold line.
+        const weeks = report.weeks;
+        const weekLabels = weeks.map(w => new Date(w.weekStart + 'T00:00:00')
+            .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }));
+        charts.push(new Chart($('trend-chart'), {
+            type: 'line',
+            data: {
+                labels: weekLabels,
+                datasets: [
+                    { label: 'That week', data: weeks.map(w => w.percent), borderColor: COLORS.accent,
+                      backgroundColor: COLORS.accent, borderWidth: 2, pointRadius: 4, pointHoverRadius: 5, tension: 0 },
+                    { label: 'Running total', data: weeks.map(w => w.cumulativePercent), borderColor: COLORS.context,
+                      backgroundColor: COLORS.context, borderWidth: 2, borderDash: [6, 4], pointRadius: 0,
+                      pointHoverRadius: 4, tension: 0 },
+                    thresholdLine(weekLabels),
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', align: 'start', labels: { boxWidth: 18, boxHeight: 2, color: COLORS.text } },
+                    tooltip: {
+                        ...tooltip, displayColors: true,
+                        filter: (item) => item.datasetIndex < 2,
+                        callbacks: {
+                            title: (items) => `Week of ${Sessions.formatDate(weeks[items[0].dataIndex].weekStart, true)}`,
+                            label: (item) => {
+                                const w = weeks[item.dataIndex];
+                                return item.datasetIndex === 0
+                                    ? `That week: ${pct(w.percent)}% (${w.attended}/${w.held})`
+                                    : `Running total: ${pct(w.cumulativePercent)}%`;
+                            },
+                        },
+                    },
+                },
+                scales: { y: percentAxis, x: { grid: { display: false }, border: { color: COLORS.line } } },
+            },
+        }));
+    }
+
+    // ------------------------------------------------------------ controls
+
+    function setPeriod(p) {
+        period = p;
+        document.querySelectorAll('[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === p));
+        $('month-input').hidden = p !== 'MONTH';
+        load().catch(showError);
+    }
+
+    function showError(error) {
+        document.querySelector('.main').innerHTML =
+            `<div class="card empty">${esc(error.message)} <a href="/reports.html">Back to the class report</a></div>`;
+    }
+
+    document.querySelectorAll('[data-period]').forEach(b => b.addEventListener('click', () => setPeriod(b.dataset.period)));
+    $('month-input').addEventListener('change', () => { if ($('month-input').value) load().catch(showError); });
+
+    (async () => {
+        await Layout.init('reports');
+        if (!studentId) {
+            window.location.href = '/reports.html';
+            return;
+        }
+        $('month-input').value = UI.queryParam('month') || Sessions.todayIso().slice(0, 7);
+        setPeriod(period);
+    })();
+</script>
+</body>
+</html>

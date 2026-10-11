@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2F5D50">
+    <link rel="icon" type="image/png" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <script src="/js/pwa.js" defer></script>
+    <title>Log in · Attendance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="login-page">
+    <form class="card login-card" id="login-form" novalidate>
+        <img class="login-mark" src="/icons/icon-192.png" alt="">
+        <h1>Attendance Tracker</h1>
+        <p class="muted">Staff login</p>
+
+        <div class="alert alert-error" id="login-error" hidden></div>
+
+        <div class="field">
+            <label for="email">Email</label>
+            <input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+            <label for="password">Password</label>
+            <input class="input" id="password" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        <button class="btn btn-primary btn-block" id="login-btn" type="submit">Log in</button>
+    </form>
+</main>
+
+<script src="/js/api.js"></script>
+<script>
+    const form = document.getElementById('login-form');
+    const errorBox = document.getElementById('login-error');
+    const button = document.getElementById('login-btn');
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.hidden = false;
+    }
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const email = form.email.value.trim();
+        const password = form.password.value;
+        if (!email || !password) {
+            showError('Enter your email and password.');
+            return;
+        }
+        errorBox.hidden = true;
+        button.disabled = true;
+        button.textContent = 'Logging in...';
+        try {
+            await Api.login(email, password);
+            window.location.href = '/index.html';
+        } catch (e) {
+            showError(e.message);
+            button.disabled = false;
+            button.textContent = 'Log in';
+        }
+    });
+</script>
+</body>
+</html>

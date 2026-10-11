@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#2F5D50">
+    <link rel="icon" type="image/png" href="/icons/favicon-32.png">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <script src="/js/pwa.js" defer></script>
+    <title>Teachers · Attendance Tracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<main class="main">
+    <div class="page-header">
+        <div>
+            <h1>Teachers</h1>
+            <p>Teachers log in with their email and can mark attendance for their own sessions.</p>
+        </div>
+        <button class="btn btn-primary" id="add-btn" type="button"><i data-lucide="plus"></i>Add teacher</button>
+    </div>
+
+    <div class="card flush">
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                <tr><th>Name</th><th>Email</th><th class="actions"></th></tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+        </div>
+    </div>
+</main>
+
+<script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/layout.js"></script>
+<script>
+    const esc = UI.esc;
+    let teachers = [];
+
+    async function load() {
+        teachers = await Api.get('/api/admin/teachers');
+        const rows = document.getElementById('rows');
+        if (teachers.length === 0) {
+            rows.innerHTML = '<tr><td colspan="3" class="empty">No teachers yet.</td></tr>';
+            return;
+        }
+        rows.innerHTML = teachers.map(t => `
+            <tr>
+                <td>${esc(t.name)}</td>
+                <td class="muted">${esc(t.email)}</td>
+                <td class="actions">
+                    <button class="icon-btn" data-edit="${t.id}" title="Edit" aria-label="Edit ${esc(t.name)}"><i data-lucide="pencil"></i></button>
+                    <button class="icon-btn danger" data-delete="${t.id}" title="Delete" aria-label="Delete ${esc(t.name)}"><i data-lucide="trash-2"></i></button>
+                </td>
+            </tr>`).join('');
+        UI.icons();
+    }
+
+    function openForm(teacher) {
+        const t = teacher || { name: '', email: '' };
+        UI.formDialog({
+            title: teacher ? 'Edit teacher' : 'Add teacher',
+            body: `
+                <div class="field">
+                    <label for="name">Name</label>
+                    <input class="input" id="name" name="name" maxlength="100" value="${esc(t.name)}">
+                </div>
+                <div class="field">
+                    <label for="email">Email</label>
+                    <input class="input" id="email" name="email" type="email" maxlength="150" value="${esc(t.email)}">
+                </div>
+                <div class="field">
+                    <label for="password">${teacher ? 'New password' : 'Password'}</label>
+                    <input class="input" id="password" name="password" type="password" maxlength="72" autocomplete="new-password">
+                    <div class="field-hint">${teacher ? 'Leave blank to keep the current password.' : 'At least 6 characters.'}</div>
+                </div>`,
+            onSubmit: async (form) => {
+                const body = { name: form.name.value, email: form.email.value, password: form.password.value };
+                if (teacher) {
+                    await Api.put(`/api/admin/teachers/${teacher.id}`, body);
+                    UI.notice('Teacher saved.');
+                } else {
+                    await Api.post('/api/admin/teachers', body);
+                    UI.notice('Teacher added.');
+                }
+                await load();
+            },
+        });
+    }
+
+    document.getElementById('add-btn').addEventListener('click', () => openForm(null));
+
+    document.getElementById('rows').addEventListener('click', async (event) => {
+        const editBtn = event.target.closest('[data-edit]');
+        const deleteBtn = event.target.closest('[data-delete]');
+        if (editBtn) {
+            openForm(teachers.find(t => t.id === Number(editBtn.dataset.edit)));
+        } else if (deleteBtn) {
+            const t = teachers.find(x => x.id === Number(deleteBtn.dataset.delete));
+            if (await UI.confirm(`Delete the account of ${t.name}? They will no longer be able to log in.`)) {
+                await UI.run(() => Api.del(`/api/admin/teachers/${t.id}`), 'Teacher deleted.');
+                await load();
+            }
+        }
+    });
+
+    (async () => {
+        await Layout.init('teachers', { adminOnly: true });
+        await load();
+    })();
+</script>
+</body>
+</html>
