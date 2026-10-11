@@ -33,16 +33,14 @@ CREATE USER 'attendance'@'localhost' IDENTIFIED BY 'attendance';
 GRANT ALL PRIVILEGES ON attendance_tracker.* TO 'attendance'@'localhost';
 ```
 
-### Configure `src/main/resources/application.properties`
+### Settings (`src/main/resources/application.properties`)
 
-```properties
-spring.datasource.username=root
-spring.datasource.password=your-mysql-password
-```
+Do not put passwords in this file (it goes to GitHub); see "Your own MySQL password" below.
 
 | Property | Meaning |
 |---|---|
-| `spring.datasource.url` | MySQL connection (`createDatabaseIfNotExist=true`) |
+| `spring.datasource.url` | MySQL connection (`createDatabaseIfNotExist=true`); host, port, database, user and password come from `MYSQL...` environment variables, with local defaults |
+| `app.seed.admin-password`, `app.seed.teacher-password` | demo passwords, from `ADMIN_PASSWORD` / `TEACHER_PASSWORD` (default `admin123` / `teacher123`) |
 | `spring.sql.init.mode=always` | runs `schema.sql` on every start; safe because it uses `CREATE TABLE IF NOT EXISTS` |
 | `app.seed-demo-data=true` | fills an **empty** database with demo data (once) |
 
@@ -59,6 +57,43 @@ Open <http://localhost:8080>.
 in the Windows firewall if asked. The browser menu's **Add to Home Screen** puts the app on the home screen.
 The full offline-capable install (service worker) needs HTTPS or `localhost`; over plain `http://` on the
 network the app works the same, only without the caching.
+
+### Your own MySQL password
+
+Create a file **`local.properties`** in the project folder (it is in `.gitignore`, so it never goes to GitHub):
+
+```properties
+spring.datasource.username=root
+spring.datasource.password=your-mysql-password
+```
+
+### Deploy online (Railway)
+
+The app reads all server settings from environment variables and has a `Dockerfile`, so it runs on any
+host that builds Docker images. Steps for [Railway](https://railway.com):
+
+1. **GitHub:** create an empty repository (no README), then in the project folder:
+   `git remote add origin https://github.com/<you>/attendance-tracker.git` and `git push -u origin main`.
+2. **Railway:** sign in with GitHub, **New Project** -> **Deploy from GitHub repo** -> choose the repository.
+   Railway finds the `Dockerfile` and builds the app.
+3. In the same project: **Create** -> **Database** -> **MySQL**.
+4. Open the app service -> **Variables** and add:
+
+   | Variable | Value |
+   |---|---|
+   | `MYSQLHOST` | `${{MySQL.MYSQLHOST}}` |
+   | `MYSQLPORT` | `${{MySQL.MYSQLPORT}}` |
+   | `MYSQLDATABASE` | `${{MySQL.MYSQLDATABASE}}` |
+   | `MYSQLUSER` | `${{MySQL.MYSQLUSER}}` |
+   | `MYSQLPASSWORD` | `${{MySQL.MYSQLPASSWORD}}` |
+   | `ADMIN_PASSWORD` | a password of your choice for `admin@college.edu` |
+   | `TEACHER_PASSWORD` | a password of your choice for the demo teachers |
+   | `COOKIE_SECURE` | `true` |
+
+5. App service -> **Settings** -> **Networking** -> **Generate Domain**. The app is then live at
+   `https://<name>.up.railway.app` (HTTPS, so "Add to Home Screen" installs it fully on phones).
+6. Every `git push` deploys the new version. The demo data (and the logins) is created once, on the
+   first start; later starts keep the data. For real use, delete the demo class and teachers in the app.
 
 ### Tests
 
