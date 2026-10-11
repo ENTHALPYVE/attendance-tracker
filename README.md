@@ -92,6 +92,12 @@ host that builds Docker images. Free setup: the app on **Render** (free web serv
    (HTTPS, so "Add to Home Screen" installs it fully on phones). The demo data and logins are created
    on the first start; later starts keep the data.
 5. Every `git push` deploys the new version.
+6. **Own domain** (`attandtrackinger.qd.je`, registered at DigitalPlat FreeDomain): `render.yaml` already adds it to
+   the Render service. In Render open the service -> **Settings** -> **Custom Domains** to see the DNS record it
+   wants, then add that record in the DigitalPlat dashboard (DNS management of the domain). For a domain like
+   this one (no `www.` in front) that is an **A record** for `@` pointing to the IP address Render shows.
+   Click **Verify** in Render; the HTTPS certificate follows within minutes, and the app is at
+   `https://attandtrackinger.qd.je`.
 
 **Free plan limits:** the Render service sleeps after 15 minutes without visitors; the next visit wakes it,
 which takes 1-2 minutes (open the link a few minutes before a demo). Aiven may power off a free database

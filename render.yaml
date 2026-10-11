@@ -8,6 +8,9 @@ services:
     plan: free
     region: singapore
     healthCheckPath: /login.html
+    # Custom domain (DNS managed at DigitalPlat FreeDomain); Render issues the HTTPS certificate.
+    domains:
+      - attandtrackinger.qd.je
     envVars:
       - key: MYSQLHOST          # Aiven: Host
         sync: false
