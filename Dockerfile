@@ -1,4 +1,4 @@
-# Builds and runs Attendance Tracker in a container (used by Railway and other hosts).
+# Builds and runs Attendance Tracker in a container (used by Render, Railway and other hosts).
 
 # ---- 1. Build the jar with Maven (tests run on your computer; skipped here to keep deploys fast)
 FROM maven:3.9.9-eclipse-temurin-17 AS build
@@ -15,7 +15,9 @@ COPY --from=build /app/target/attendance-tracker-1.0.0.jar app.jar
 
 # "Today" must be the Indian date, whatever time zone the server is in.
 ENV TZ=Asia/Kolkata
-ENV JAVA_TOOL_OPTIONS="-Duser.timezone=Asia/Kolkata -XX:MaxRAMPercentage=75 -Djava.awt.headless=true"
+# Small free servers (512 MB, slow CPU): cap memory, use the simple garbage collector and
+# a quicker-starting compiler setting.
+ENV JAVA_TOOL_OPTIONS="-Duser.timezone=Asia/Kolkata -XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xss512k -Djava.awt.headless=true"
 
 # The host tells the app which port to use in the PORT variable (default 8080).
 EXPOSE 8080

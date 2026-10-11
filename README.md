@@ -67,33 +67,40 @@ spring.datasource.username=root
 spring.datasource.password=your-mysql-password
 ```
 
-### Deploy online (Railway)
+### Deploy online for free (Render + Aiven)
 
 The app reads all server settings from environment variables and has a `Dockerfile`, so it runs on any
-host that builds Docker images. Steps for [Railway](https://railway.com):
+host that builds Docker images. Free setup: the app on **Render** (free web service), the database on
+**Aiven** (free MySQL, no credit card).
 
 1. **GitHub:** create an empty repository (no README), then in the project folder:
    `git remote add origin https://github.com/<you>/attendance-tracker.git` and `git push -u origin main`.
-2. **Railway:** sign in with GitHub, **New Project** -> **Deploy from GitHub repo** -> choose the repository.
-   Railway finds the `Dockerfile` and builds the app.
-3. In the same project: **Create** -> **Database** -> **MySQL**.
-4. Open the app service -> **Variables** and add:
+2. **Aiven** ([aiven.io](https://aiven.io)): sign up -> **Create service** -> **MySQL** -> **Free plan**
+   -> choose a region near you -> create. When it is running, the **Overview** page shows
+   **Host, Port, User** (`avnadmin`), **Password** and **Database name** (`defaultdb`).
+3. **Render** ([render.com](https://render.com)): sign in with GitHub -> **New** -> **Blueprint** -> choose the
+   repository. Render reads `render.yaml` (a free Docker web service) and asks for the values:
 
    | Variable | Value |
    |---|---|
-   | `MYSQLHOST` | `${{MySQL.MYSQLHOST}}` |
-   | `MYSQLPORT` | `${{MySQL.MYSQLPORT}}` |
-   | `MYSQLDATABASE` | `${{MySQL.MYSQLDATABASE}}` |
-   | `MYSQLUSER` | `${{MySQL.MYSQLUSER}}` |
-   | `MYSQLPASSWORD` | `${{MySQL.MYSQLPASSWORD}}` |
+   | `MYSQLHOST`, `MYSQLPORT`, `MYSQLPASSWORD` | from the Aiven Overview page |
    | `ADMIN_PASSWORD` | a password of your choice for `admin@college.edu` |
    | `TEACHER_PASSWORD` | a password of your choice for the demo teachers |
-   | `COOKIE_SECURE` | `true` |
 
-5. App service -> **Settings** -> **Networking** -> **Generate Domain**. The app is then live at
-   `https://<name>.up.railway.app` (HTTPS, so "Add to Home Screen" installs it fully on phones).
-6. Every `git push` deploys the new version. The demo data (and the logins) is created once, on the
-   first start; later starts keep the data. For real use, delete the demo class and teachers in the app.
+   (`MYSQLDATABASE=defaultdb`, `MYSQLUSER=avnadmin` and `COOKIE_SECURE=true` are already in `render.yaml`.)
+4. The first build takes about 5-10 minutes. The app is then live at `https://attendance-tracker-xxxx.onrender.com`
+   (HTTPS, so "Add to Home Screen" installs it fully on phones). The demo data and logins are created
+   on the first start; later starts keep the data.
+5. Every `git push` deploys the new version.
+
+**Free plan limits:** the Render service sleeps after 15 minutes without visitors; the next visit wakes it,
+which takes 1-2 minutes (open the link a few minutes before a demo). Aiven may power off a free database
+that is not used for a long time (it sends an email first). Free plans are for demos, not for a whole college.
+
+**Paid alternative (no sleeping): Railway.** New Project -> Deploy from GitHub repo, then Create -> Database ->
+MySQL, and in the app's Variables set `MYSQLHOST=${{MySQL.MYSQLHOST}}` (and the same for `MYSQLPORT`,
+`MYSQLDATABASE`, `MYSQLUSER`, `MYSQLPASSWORD`) plus `ADMIN_PASSWORD`, `TEACHER_PASSWORD`, `COOKIE_SECURE=true`;
+then Settings -> Networking -> Generate Domain.
 
 ### Tests
 

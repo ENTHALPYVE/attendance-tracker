@@ -1,0 +1,27 @@
+# Render "Blueprint": lets Render create the web service from this file.
+# Render -> New -> Blueprint -> choose this repository, then fill in the values marked "sync: false".
+# The MySQL database is on Aiven's free plan (see README, "Deploy online for free").
+services:
+  - type: web
+    name: attendance-tracker
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /login.html
+    envVars:
+      - key: MYSQLHOST          # Aiven: Host
+        sync: false
+      - key: MYSQLPORT          # Aiven: Port
+        sync: false
+      - key: MYSQLDATABASE      # Aiven: Database name
+        value: defaultdb
+      - key: MYSQLUSER          # Aiven: User
+        value: avnadmin
+      - key: MYSQLPASSWORD      # Aiven: Password
+        sync: false
+      - key: ADMIN_PASSWORD     # your password for admin@college.edu
+        sync: false
+      - key: TEACHER_PASSWORD   # your password for the demo teachers
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
