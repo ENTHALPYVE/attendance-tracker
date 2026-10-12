@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher icon for Android 8+ (copied over Bubblewrap's generated project by setup-tools.sh).
+
+    Bubblewrap's own version puts the whole logo in the background layer and leaves the foreground
+    transparent, with no monochrome layer. Launchers that theme icons (Android 13+ "Themed icons" and
+    launchers that recolour every app) draw only the foreground / monochrome layer, so the app showed
+    as a blank tinted circle. Here the layers are used as Android intends:
+      background  - the brand green
+      foreground  - the white tick (inside the 66dp safe zone, so no launcher shape cuts it off)
+      monochrome  - the same tick, recoloured by themed-icon launchers
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>

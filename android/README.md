@@ -17,6 +17,20 @@ tool for turning a web app into an Android app. The app has no code or data of i
 | `setup-tools.sh` | one-time download of JDK 17 + Android SDK + Bubblewrap into `%LOCALAPPDATA%\attendance-android-tools`, then generates the Android project there |
 | `generate-project.js` | turns `twa-manifest.json` into an Android project (used by `setup-tools.sh`) |
 | `build-release.ps1` | creates your signing key (first time), builds and signs `AttendanceTracker.apk`, prints the key fingerprint |
+| `res/` | our launcher icon, copied over the generated project (see below) |
+
+## Launcher icon
+
+Bubblewrap's generated icon puts the whole logo in the *background* layer of the adaptive icon and leaves
+the *foreground* transparent, with no *monochrome* layer. Launchers that theme icons (Android 13+ "Themed
+icons", and launchers that recolour every app) draw only the foreground / monochrome layer, so the app
+appeared as a blank tinted circle. `res/` replaces it with a proper adaptive icon:
+
+- `values/ic_launcher_background.xml`: background = brand green `#2F5D50`
+- `drawable/ic_launcher_foreground.xml`: the white tick as a vector, inside the 66 dp safe zone
+- `mipmap-anydpi-v26/ic_launcher.xml`: background + foreground + the tick again as the monochrome layer
+
+Android 7 (no adaptive icons) keeps Bubblewrap's PNG icon, which is the same logo.
 
 Nothing secret is stored here. The signing key lives outside the project
 (`%USERPROFILE%\attendance-signing\`), and `.gitignore` blocks `*.keystore`, `*.jks` and `*.apk`.

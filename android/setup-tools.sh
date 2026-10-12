@@ -38,5 +38,7 @@ echo "[5/5] Android project from android/twa-manifest.json"
 rm -rf "$T/project"
 ( cd bubblewrap && node generate-project.js "$(cygpath -w "$HERE/twa-manifest.json")" "$(cygpath -w "$T/project")" )
 printf "sdk.dir=%s\n" "$(cygpath -m "$T/sdk")" > "$T/project/local.properties"   # C:/... form, no escaping needed
+# Our launcher icon (android/res) replaces Bubblewrap's, which showed blank with themed icons
+cp -r "$HERE/res/." "$T/project/app/src/main/res/"
 
 echo "Done. Tools and project are in $T"

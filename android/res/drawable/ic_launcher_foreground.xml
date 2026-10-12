@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The Attendance Tracker tick as a vector, so it is sharp at every screen density.
+    Adaptive icons are 108 x 108 dp; launchers show the middle 72 dp, so the tick is placed exactly as
+    in the website icon (static/icons/icon-512.png): x' = 18 + x * 72 / 512.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M39.8,55.27 L49.22,65.25 L68.77,44.58"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>
