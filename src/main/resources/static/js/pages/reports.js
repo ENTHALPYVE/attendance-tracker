@@ -1,0 +1,283 @@
+/* Page script for /reports.html (kept out of the HTML so the Content-Security-Policy can forbid inline scripts). */
+const esc = UI.esc;
+const $ = (id) => document.getElementById(id);
+const RANGE_TABS = { week: 'WEEK', month: 'MONTH', overall: 'OVERALL', custom: 'CUSTOM' };
+
+let classes = [];
+let tab = 'day';
+let report = null;
+let sort = { key: 'roll', dir: 1 };
+
+// ------------------------------------------------------------ helpers
+
+const pct = (p) => p == null ? '–' : p.toFixed(1);
+
+function statusBadge(status) {
+    switch (status) {
+        case 'DEFAULTER': return '<span class="badge badge-red">Defaulter</span>';
+        case 'AT_RISK': return '<span class="badge badge-amber">At risk</span>';
+        case 'SAFE': return '<span class="badge badge-green">Safe</span>';
+        default: return '<span class="muted">–</span>';
+    }
+}
+
+const compareRoll = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+/** Query string describing the chosen period, shared by the JSON call, the PDF links and student links. */
+function periodParams() {
+    const p = new URLSearchParams({ period: RANGE_TABS[tab] });
+    if (tab === 'week') p.set('date', $('date-input').value || Sessions.todayIso());
+    if (tab === 'month') p.set('month', $('month-input').value);
+    if (tab === 'custom') { p.set('from', $('from-input').value); p.set('to', $('to-input').value); }
+    return p;
+}
+
+function studentLink(row) {
+    const p = tab === 'day' ? new URLSearchParams({ period: 'OVERALL' }) : periodParams();
+    return `<a href="/student.html?id=${row.studentId}&${p}">${esc(row.name)}</a>`;
+}
+
+/** Rows after the batch / defaulter filters, sorted by the chosen column. */
+function visibleRows() {
+    const batch = $('batch-filter').value;
+    const defaultersOnly = $('defaulters-only').checked;
+    const rows = report.rows.filter(r =>
+        (!batch || r.batchName === batch) &&
+        (!defaultersOnly || r.status === 'DEFAULTER' || (r.belowIn && r.belowIn.length > 0)));
+    const key = sort.key;
+    return rows.sort((a, b) => {
+        let cmp;
+        if (key === 'roll') cmp = compareRoll(a.rollNo, b.rollNo);
+        else if (key === 'name') cmp = a.name.localeCompare(b.name);
+        else if (key === 'batch') cmp = compareRoll(a.batchName, b.batchName) || compareRoll(a.rollNo, b.rollNo);
+        else if (key === 'pct') cmp = (a.percent ?? -1) - (b.percent ?? -1);
+        else cmp = (a.subjects?.[key]?.combinedPercent ?? -1) - (b.subjects?.[key]?.combinedPercent ?? -1);
+        return cmp * sort.dir;
+    });
+}
+
+function th(label, key, cls = '', extra = '') {
+    const active = sort.key === key;
+    const arrow = active ? (sort.dir === 1 ? ' ↑' : ' ↓') : '';
+    return `<th class="${cls} sortable${active ? ' sorted' : ''}" data-sort="${key}" ${extra}>${label}${arrow}</th>`;
+}
+
+// ------------------------------------------------------------ loading
+
+async function load() {
+    const classId = $('class-select').value;
+    const url = new URLSearchParams({ tab, classId });
+    try {
+        if (tab === 'day') {
+            const date = $('date-input').value || Sessions.todayIso();
+            url.set('date', date);
+            report = await Api.get(`/api/reports/classes/${classId}/day?date=${date}`);
+            $('pdf-btn').href = `/api/reports/day.pdf?classId=${classId}&date=${date}`;
+            $('excel-btn').href = `/api/reports/day.xlsx?classId=${classId}&date=${date}`;
+            $('csv-btn').href = `/api/reports/day.csv?classId=${classId}&date=${date}`;
+            $('pdf-all-btn').href = `/api/reports/day.pdf?date=${date}`;
+        } else {
+            if (tab === 'custom' && (!$('from-input').value || !$('to-input').value)) {
+                $('facts').textContent = 'Choose a start and an end date.';
+                $('table').innerHTML = '';
+                return;
+            }
+            const p = periodParams();
+            p.forEach((v, k) => url.set(k, v));
+            report = await Api.get(`/api/reports/classes/${classId}/range?${p}`);
+            $('pdf-btn').href = `/api/reports/range.pdf?classId=${classId}&${p}`;
+            $('excel-btn').href = `/api/reports/range.xlsx?classId=${classId}&${p}`;
+            $('csv-btn').href = `/api/reports/range.csv?classId=${classId}&${p}`;
+            $('defaulters-btn').href = `/api/reports/defaulters.xlsx?classId=${classId}&${p}`;
+            $('pdf-all-btn').href = `/api/reports/range.pdf?${p}`;
+        }
+    } catch (error) {
+        $('facts').innerHTML = `<span class="alert alert-error">${esc(error.message)}</span>`;
+        $('table').innerHTML = '';
+        return;
+    }
+    history.replaceState(null, '', '?' + url);
+    draw();
+}
+
+function draw() {
+    tab === 'day' ? drawDay() : drawRange();
+    UI.icons();
+}
+
+function drawDay() {
+    const r = report;
+    const facts = [`<strong>${esc(r.className)}</strong>`, Sessions.formatDate(r.date),
+                   `${r.sessionsTaken} sessions taken`];
+    if (r.sessionsPending) facts.push(`<span class="badge badge-amber">${r.sessionsPending} not marked yet</span>`);
+    if (r.sessionsCancelled) facts.push(`${r.sessionsCancelled} cancelled`);
+    if (r.holiday) facts.push(`Holiday: ${esc(r.holiday)}`);
+    $('facts').innerHTML = facts.join(' <span class="muted">·</span> ');
+
+    const rows = visibleRows();
+    let html = `<thead><tr>${th('Roll No', 'roll')}${th('Name', 'name')}${th('Batch', 'batch')}
+                <th class="num">Attended</th><th class="num">Held</th>${th('%', 'pct', 'num')}
+                <th>Status</th><th>Absent in</th></tr></thead><tbody>`;
+    html += rows.map(row => `
+        <tr>
+            <td class="roll">${esc(row.rollNo)}</td>
+            <td>${studentLink(row)}</td>
+            <td>${esc(row.batchName)}</td>
+            <td class="num">${row.attended}</td>
+            <td class="num">${row.held}</td>
+            <td class="num"><strong>${pct(row.percent)}</strong></td>
+            <td>${statusBadge(row.status)}</td>
+            <td class="small muted">${row.absentIn.map(esc).join(', ')}</td>
+        </tr>`).join('') || `<tr><td colspan="8" class="empty">${r.sessionsTaken ? 'No students match.' : 'No attendance has been taken on this day.'}</td></tr>`;
+    $('table').innerHTML = html + '</tbody>';
+
+    $('legend').textContent = `Day % = sessions attended ÷ sessions held that day for the student's batch. ` +
+        `Only sessions marked as done count. Threshold ${r.threshold}%` +
+        (r.countFreeSlotsAsPresent ? '; free slots count as present.' : '.');
+}
+
+function drawRange() {
+    const r = report;
+    const parts = $('show-parts').checked;
+    $('facts').innerHTML = [`<strong>${esc(r.className)}</strong>`, esc(r.title),
+        `${Sessions.formatDate(r.from, true)} – ${Sessions.formatDate(r.to, true)}`,
+        `${r.sessionsTaken} sessions taken`].join(' <span class="muted">·</span> ');
+
+    // Header: one column per subject, or theory / lab / combined under each subject.
+    let head1 = `<tr>${th('Roll No', 'roll', '', parts ? 'rowspan="2"' : '')}${th('Name', 'name', '', parts ? 'rowspan="2"' : '')}${th('Batch', 'batch', '', parts ? 'rowspan="2"' : '')}`;
+    let head2 = '<tr>';
+    for (const s of r.subjects) {
+        if (parts) {
+            const cols = subjectParts(s);
+            head1 += th(esc(s.code), String(s.subjectId), 'num group-start', `colspan="${cols.length}" title="${esc(s.name)}"`);
+            head2 += cols.map((c, i) => `<th class="num${i === 0 ? ' group-start' : ''}">${c.label}</th>`).join('');
+        } else {
+            head1 += th(esc(s.code), String(s.subjectId), 'num', `title="${esc(s.name)}"`);
+        }
+    }
+    const rs = parts ? 'rowspan="2"' : '';
+    head1 += `<th class="num" ${rs}>Attended</th>${th('%', 'pct', 'num', rs)}<th ${rs}>Status</th><th ${rs}>Note</th></tr>`;
+    let html = `<thead>${head1}${parts ? head2 + '</tr>' : ''}</thead><tbody>`;
+
+    const rows = visibleRows();
+    html += rows.map(row => `
+        <tr>
+            <td class="roll">${esc(row.rollNo)}</td>
+            <td>${studentLink(row)}</td>
+            <td>${esc(row.batchName)}</td>
+            ${r.subjects.map(s => subjectCells(row.subjects[s.subjectId], s, parts)).join('')}
+            <td class="num">${row.attended}/${row.held}</td>
+            <td class="num"><strong>${pct(row.percent)}</strong></td>
+            <td>${statusBadge(row.status)}</td>
+            <td class="small muted note">${note(row, r.threshold)}</td>
+        </tr>`).join('') || `<tr><td colspan="${20 + r.subjects.length * 3}" class="empty">No students match.</td></tr>`;
+    $('table').innerHTML = html + '</tbody>';
+
+    $('legend').textContent = parts
+        ? `T = theory %, L = lab %, C = combined %. Red means below ${r.threshold}%. Overall % = total attended ÷ total held.`
+        : `Subject columns show combined theory + lab %; red means theory or lab is below ${r.threshold}% ` +
+          `(hover for details, or tick Theory / Lab). Overall % = total attended ÷ total held.`;
+}
+
+/** Which sub-columns a subject gets: T and/or L, and C when it has both. */
+function subjectParts(s) {
+    const cols = [];
+    if (s.hasTheory) cols.push({ label: 'T', key: 'theory' });
+    if (s.hasLab) cols.push({ label: 'L', key: 'lab' });
+    if (s.hasTheory && s.hasLab) cols.push({ label: 'C', key: 'combined' });
+    return cols;
+}
+
+function subjectCells(c, s, parts) {
+    if (!parts) {
+        if (!c) return '<td class="num muted">–</td>';
+        const detail = [];
+        if (c.theoryHeld) detail.push(`Theory ${c.theoryAttended}/${c.theoryHeld} (${pct(c.theoryPercent)}%)`);
+        if (c.labHeld) detail.push(`Lab ${c.labAttended}/${c.labHeld} (${pct(c.labPercent)}%)`);
+        return `<td class="num${c.defaulter ? ' below' : ''}" title="${esc(s.code)}: ${detail.join(', ')}">${pct(c.combinedPercent)}</td>`;
+    }
+    return subjectParts(s).map((col, i) => {
+        const cls = 'num' + (i === 0 ? ' group-start' : '');
+        if (!c) return `<td class="${cls} muted">–</td>`;
+        const value = c[col.key + 'Percent'];
+        const below = value != null && value < report.threshold && col.key !== 'combined';
+        return `<td class="${cls}${below ? ' below' : ''}">${pct(value)}</td>`;
+    }).join('');
+}
+
+/** Short note; the full explanation is in the tooltip. */
+function note(row, threshold) {
+    const full = [];
+    let short = '';
+    if (row.needed != null) {
+        short = `Needs ${row.needed} more`;
+        full.push(`Needs ${row.needed} more sessions in a row to reach ${threshold}%`);
+    } else if (row.canMiss != null) {
+        short = `Can miss ${row.canMiss}`;
+        full.push(`Can miss ${row.canMiss} sessions and stay at ${threshold}%`);
+    }
+    if (row.belowIn.length) full.push(`Below ${threshold}% in ${row.belowIn.join(', ')}`);
+    return `<span title="${esc(full.join('. '))}">${short}${row.belowIn.length ? ` · ${row.belowIn.length} low` : ''}</span>`;
+}
+
+// ------------------------------------------------------------ controls
+
+function setTab(name) {
+    tab = name;
+    document.querySelectorAll('.tab').forEach(t => {
+        const active = t.dataset.tab === name;
+        t.classList.toggle('active', active);
+        t.setAttribute('aria-selected', active);
+    });
+    $('date-input').hidden = !(name === 'day' || name === 'week');
+    $('month-input').hidden = name !== 'month';
+    $('custom-inputs').hidden = name !== 'custom';
+    $('parts-toggle').hidden = name === 'day';
+    $('defaulters-btn').hidden = name === 'day';   // defaulters are judged over a period, not one day
+    load();
+}
+
+function fillBatchFilter() {
+    const cls = classes.find(c => String(c.id) === $('class-select').value);
+    $('batch-filter').innerHTML = '<option value="">All batches</option>' +
+        cls.batches.map(b => `<option value="${esc(b.name)}">${esc(b.name)}</option>`).join('');
+}
+
+document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setTab(t.dataset.tab)));
+$('class-select').addEventListener('change', () => { fillBatchFilter(); load(); });
+for (const id of ['date-input', 'month-input', 'from-input', 'to-input']) {
+    $(id).addEventListener('change', () => { if ($(id).value) load(); });
+}
+$('batch-filter').addEventListener('change', draw);
+$('defaulters-only').addEventListener('change', draw);
+$('show-parts').addEventListener('change', draw);
+$('table').addEventListener('click', (event) => {
+    const head = event.target.closest('[data-sort]');
+    if (!head) return;
+    const key = head.dataset.sort;
+    sort = { key, dir: sort.key === key ? -sort.dir : (key === 'roll' || key === 'name' || key === 'batch' ? 1 : -1) };
+    draw();
+});
+
+$('print-btn').addEventListener('click', () => window.print());
+
+(async () => {
+    await Layout.init('reports');
+    classes = await Api.get('/api/reports/classes');
+    if (classes.length === 0) {
+        document.querySelector('.card').innerHTML = '<div class="empty">You have no classes to report on yet.</div>';
+        ['pdf-btn', 'excel-btn', 'csv-btn', 'defaulters-btn', 'pdf-all-btn', 'print-btn'].forEach(id => $(id).hidden = true);
+        return;
+    }
+    if (classes.length < 2) $('pdf-all-btn').hidden = true;
+    $('class-select').innerHTML = classes.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    const q = UI.queryParam;
+    if (q('classId') && classes.some(c => String(c.id) === q('classId'))) $('class-select').value = q('classId');
+    fillBatchFilter();
+    const today = Sessions.todayIso();
+    $('date-input').value = q('date') || today;
+    $('month-input').value = q('month') || today.slice(0, 7);
+    $('from-input').value = q('from') || today.slice(0, 8) + '01';
+    $('to-input').value = q('to') || today;
+    setTab(['day', 'week', 'month', 'overall', 'custom'].includes(q('tab')) ? q('tab') : 'day');
+})();
