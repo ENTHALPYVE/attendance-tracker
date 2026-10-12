@@ -4,6 +4,8 @@ import com.college.attendance.config.DataSeeder;
 import com.college.attendance.repository.ClassSessionRepository;
 import com.college.attendance.repository.StudentRepository;
 import com.college.attendance.repository.TimetableEntryRepository;
+import com.college.attendance.repository.UserRepository;
+import com.college.attendance.model.User;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpSession;
@@ -24,6 +26,8 @@ class AuthIntegrationTest extends ApiTestSupport {
     private TimetableEntryRepository timetableRepository;
     @Autowired
     private ClassSessionRepository sessionRepository;
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void demoDataIsLoaded() {
@@ -39,6 +43,8 @@ class AuthIntegrationTest extends ApiTestSupport {
         mvc.perform(get("/api/auth/me").session(session))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.role").value("ADMIN"))
+                .andExpect(jsonPath("$.name").value("Dr. Suresh Menon"))
+                .andExpect(jsonPath("$.email").value("admin@college.edu"))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist());
         mvc.perform(get("/api/admin/summary").session(session))
                 .andExpect(status().isOk())
@@ -51,9 +57,42 @@ class AuthIntegrationTest extends ApiTestSupport {
         MockHttpSession session = login("anita.deshmukh@college.edu", DataSeeder.TEACHER_PASSWORD);
 
         mvc.perform(get("/api/auth/me").session(session))
-                .andExpect(jsonPath("$.role").value("TEACHER"));
+                .andExpect(jsonPath("$.role").value("TEACHER"))
+                .andExpect(jsonPath("$.name").value("Anita Deshmukh"))
+                .andExpect(jsonPath("$.email").value("anita.deshmukh@college.edu"));
         mvc.perform(get("/api/admin/summary").session(session))
                 .andExpect(status().isForbidden());
+    }
+
+    /** /me is identified by the session, not by anything the browser sends. */
+    @Test
+    void meIgnoresIdentityParametersFromTheBrowser() throws Exception {
+        MockHttpSession session = login("anita.deshmukh@college.edu", DataSeeder.TEACHER_PASSWORD);
+
+        mvc.perform(get("/api/auth/me").session(session)
+                        .param("role", "ADMIN").param("name", "Hacker").param("id", "1"))
+                .andExpect(jsonPath("$.role").value("TEACHER"))
+                .andExpect(jsonPath("$.name").value("Anita Deshmukh"));
+        mvc.perform(get("/api/admin/summary").session(session).param("role", "ADMIN"))
+                .andExpect(status().isForbidden());
+    }
+
+    /** A name changed in the database shows up on the next /me call, without logging in again. */
+    @Test
+    void meShowsTheCurrentNameFromTheDatabase() throws Exception {
+        MockHttpSession session = login("admin@college.edu", DataSeeder.ADMIN_PASSWORD);
+        User admin = userRepository.findByEmailIgnoreCase("admin@college.edu").orElseThrow();
+        String original = admin.getName();
+        try {
+            admin.setName("Tanish Maheshwari");
+            userRepository.save(admin);
+            mvc.perform(get("/api/auth/me").session(session))
+                    .andExpect(jsonPath("$.name").value("Tanish Maheshwari"))
+                    .andExpect(jsonPath("$.role").value("ADMIN"));
+        } finally {
+            admin.setName(original);
+            userRepository.save(admin);
+        }
     }
 
     @Test

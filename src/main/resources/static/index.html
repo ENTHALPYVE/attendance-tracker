@@ -36,7 +36,6 @@
 
     /** Teacher: "My sessions today" in time order, across all classes. */
     async function showTeacherDay(user) {
-        document.getElementById('heading').textContent = 'My sessions today';
         document.getElementById('actions').innerHTML =
             '<button class="btn" id="extra-btn" type="button"><i data-lucide="plus"></i>Extra session</button>';
         document.getElementById('extra-btn').addEventListener('click', () => Sessions.openExtraForm({ user }));
@@ -48,6 +47,7 @@
         } else {
             const pending = sessions.filter(s => s.status === 'PENDING').length;
             content.innerHTML = `
+                <div class="section-head"><h2>My sessions today</h2></div>
                 <p class="muted small">${sessions.length} sessions${pending ? ` · ${pending} to mark` : ' · all marked'}</p>
                 <div class="session-list">${sessions.map(sessionCard).join('')}</div>`;
         }
@@ -134,8 +134,8 @@
     (async () => {
         const user = await Layout.init('home');
         document.getElementById('today-date').textContent = Sessions.formatDate(Sessions.todayIso());
+        document.getElementById('heading').textContent = 'Hello, ' + Layout.displayName(user);
         if (user.role === 'ADMIN') {
-            document.getElementById('heading').textContent = 'Hello, ' + user.name;
             await showAdminHome();
         } else {
             await showTeacherDay(user);

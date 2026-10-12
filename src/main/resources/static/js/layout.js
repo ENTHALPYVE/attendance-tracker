@@ -25,6 +25,12 @@ const Layout = (() => {
         return div.innerHTML;
     }
 
+    /** The user's name, or "Admin" / "Teacher" when the name is blank. */
+    function displayName(user) {
+        const name = (user.name || '').trim();
+        return name || (user.role === 'ADMIN' ? 'Admin' : 'Teacher');
+    }
+
     function navLinks(items, active, className) {
         return items.map(item => `
             <a class="${className}${item.key === active ? ' active' : ''}" href="${item.href}">
@@ -58,7 +64,7 @@ const Layout = (() => {
                 <div class="brand">Attendance Tracker<small>${roleLabel}</small></div>
                 <nav>${navLinks(items, active, 'nav-link')}</nav>
                 <div class="sidebar-footer">
-                    <div class="user-name">${esc(user.name)}</div>
+                    <div class="user-name">${esc(displayName(user))}</div>
                     <div class="muted">${esc(user.email)}</div>
                     <button class="btn-link" id="logout-btn" type="button">Log out</button>
                 </div>
@@ -95,5 +101,5 @@ const Layout = (() => {
         return user;
     }
 
-    return { init, esc };
+    return { init, esc, displayName };
 })();
