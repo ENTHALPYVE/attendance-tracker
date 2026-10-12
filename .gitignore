@@ -7,3 +7,10 @@ target/
 # Settings and secrets for one computer - never upload these
 local.properties
 .env
+
+# Android signing keys and build output - never upload these
+*.keystore
+*.jks
+*.apk
+*.aab
+android/project/
