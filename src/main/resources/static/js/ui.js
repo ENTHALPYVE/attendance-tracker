@@ -27,8 +27,16 @@ const UI = (() => {
         box.textContent = message;
         box.hidden = false;
         clearTimeout(box._timer);
-        box._timer = setTimeout(() => { box.hidden = true; }, 3500);
+        box._timer = setTimeout(() => { box.hidden = true; }, type === 'error' ? 7000 : 3500);
     }
+
+    // A page that loads data without its own error handling still tells the user what went wrong
+    // (e.g. "No internet connection") instead of staying blank.
+    window.addEventListener('unhandledrejection', (event) => {
+        if (typeof ApiError !== 'undefined' && event.reason instanceof ApiError && event.reason.status !== 401) {
+            notice(event.reason.message, 'error');
+        }
+    });
 
     /** A notice to show on the next page (e.g. "Attendance saved" after going back). */
     function flash(message) {

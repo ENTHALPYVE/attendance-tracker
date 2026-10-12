@@ -4,14 +4,15 @@ College attendance management web app: B.E. Computer Engineering mini project, U
 
 Teachers mark attendance on their phones: **theory** lectures for the whole class and **lab** sessions
 batch-wise (B1 / B2 / B3 in different labs at the same time). The app works out subject-wise (theory, lab,
-combined), day-wise and overall percentages, flags defaulters, and exports reports to PDF and Excel.
+combined), day-wise and overall percentages, flags defaulters, and exports reports to PDF, Excel and CSV.
+It runs in any browser and installs as an app on Android, iPhone / iPad, Windows and macOS (see section 7).
 
 | | |
 |---|---|
 | **Backend** | Java 17+, Spring Boot 3 (Web, Data JPA, Security, Validation), MySQL 8 |
 | **Frontend** | plain HTML, CSS and JavaScript (`fetch()` to a REST API), Chart.js, Lucide icons, IBM Plex Sans |
 | **Files** | Apache POI (Excel import / export), OpenPDF (PDF reports) |
-| **Phone** | responsive layout + PWA (manifest and service worker: "Add to Home Screen") |
+| **Devices** | responsive layout + installable PWA (manifest, service worker); Android APK via a Trusted Web Activity (`android/`) |
 
 ---
 
@@ -86,7 +87,9 @@ host that builds Docker images. Free setup: the app on **Render** (free web serv
    | `MYSQLHOST`, `MYSQLPORT`, `MYSQLPASSWORD` | from the Aiven Overview page |
    | `ADMIN_PASSWORD` | a password of your choice for `admin@college.edu` |
    | `TEACHER_PASSWORD` | a password of your choice for the demo teachers |
+   | `ANDROID_CERT_SHA256` | optional: the Android app's key fingerprint (see `android/README.md`) |
 
+   (`ADMIN_PASSWORD` / `TEACHER_PASSWORD` are only used to create the demo accounts on the very first start.)
    (`MYSQLDATABASE=defaultdb`, `MYSQLUSER=avnadmin` and `COOKIE_SECURE=true` are already in `render.yaml`.)
 4. The first build takes about 5-10 minutes. The app is then live at `https://attendance-tracker-xxxx.onrender.com`
    (HTTPS, so "Add to Home Screen" installs it fully on phones). The demo data and logins are created
@@ -114,7 +117,7 @@ then Settings -> Networking -> Generate Domain.
 mvnw.cmd test
 ```
 
-76 tests. They use an in-memory H2 database in MySQL mode with the same `schema.sql` and demo data,
+105 tests. They use an in-memory H2 database in MySQL mode with the same `schema.sql` and demo data,
 so MySQL is not needed for the tests.
 
 ### Default logins
@@ -179,8 +182,10 @@ for the classes / batches they teach.
 - **Class report**: tabs **Day, Week, Month, Overall, Custom**; one row per student with the % for each
   subject (tick **Theory / Lab** for T / L / C columns), overall %, status badge, "needs X more" / "can miss Y".
   Filter by batch, **Defaulters only**, click a heading to sort.
-- **Downloads**: **PDF**, **Excel** (class report with theory / lab / combined per subject),
-  **Defaulters (Excel)**, and **All classes (PDF)**.
+- **Downloads**: **PDF**, **Excel** (class report with theory / lab / combined per subject), **CSV**
+  (one row per student, opens in any spreadsheet), **Defaulters (Excel)**, and **All classes (PDF)**.
+- **Print**: the Print button (or Ctrl+P) prints just the report: menus, buttons and filters are hidden
+  and the table headings repeat on every page.
 - **Student page** (click a name): overall %, a **calendar** coloured by each day's %, subject table,
   a bar chart per subject and a weekly trend line chart (Chart.js).
 
@@ -241,7 +246,7 @@ src/main/java/com/college/attendance
 ├── repository/    Spring Data JPA repositories
 ├── model/         JPA entities (one per table) and enums
 ├── dto/           request / response records (dto/report: report shapes)
-├── security/      logged-in user (AppUserPrincipal), user lookup, CSRF cookie filter
+├── security/      logged-in user, user lookup, CSRF cookie filter, login rate limiting
 ├── exception/     error types and the JSON error handler
 └── util/          roll-number sorting ("2" before "10"), text clean-up
 
@@ -255,8 +260,12 @@ src/main/resources
     ├── reports.html        class report      student.html  student page
     ├── admin/*.html        classes, class, timetable, subjects, teachers, settings
     ├── css/app.css         the whole design (colour tokens at the top)
-    ├── js/                 api.js (fetch + CSRF), layout.js (menu), ui.js (dialogs), sessions.js, pwa.js
+    ├── js/                 api.js (fetch + CSRF + error messages), layout.js (menu, change password),
+    │                       ui.js (dialogs), sessions.js, pwa.js (service worker + offline bar)
+    ├── js/pages/           one script per page (no inline scripts, see Security)
     ├── manifest.json, sw.js, offline.html, icons/   PWA
+
+android/                    the Android app (Trusted Web Activity): twa-manifest.json, setup and build scripts
 ```
 
 ### Important classes (for the viva)
@@ -270,8 +279,11 @@ src/main/resources
 | `SessionService` | permission check (own session or admin), cancel / reopen, extra sessions, substitutes |
 | `TimetableService` | timetable cell rules and teacher clash check |
 | `StudentImportService` | reading Excel / CSV, the preview with errors, saving all-or-nothing |
-| `ReportPdfService`, `ReportExcelService` | PDF (OpenPDF) and Excel (Apache POI) files |
-| `SecurityConfig` | session login, BCrypt, role rules, CSRF |
+| `ReportPdfService`, `ReportExcelService`, `ReportCsvService` | PDF (OpenPDF), Excel (Apache POI) and CSV files |
+| `SecurityConfig` | session login, BCrypt, role rules, CSRF, security headers |
+| `LoginRateLimitFilter`, `FailedAttemptLimiter` | lock a login for 15 minutes after too many wrong passwords |
+| `AccountService` | changing your own password |
+| `GlobalExceptionHandler` | every error as `{"message": ...}`; database outage = 503, details only in the log |
 
 ### Database
 
@@ -302,19 +314,33 @@ re-created; sessions already taken are never touched.
   header on every POST / PUT / DELETE.
 - Input is validated with Bean Validation (`@NotBlank`, `@Size`, ...); errors come back as
   `{"message": "...", "fieldErrors": {...}}` and are shown next to the fields.
+- **SQL injection**: all database access goes through Spring Data JPA / prepared statements with parameters;
+  no SQL is built by joining strings with user input.
+- **Password guessing**: 5 wrong passwords for one email from one IP address, or 20 for one email from any
+  address, lock that login for 15 minutes (HTTP 429). Unknown emails are treated the same, so the answer never
+  reveals which emails exist. Changing your own password needs the current one and is limited the same way.
+- **Security headers**: a Content-Security-Policy allows scripts only from this site and the two CDNs
+  (Lucide, Chart.js), which also carry Subresource Integrity hashes; inline scripts, `eval`, plugins and
+  framing are blocked. Also Referrer-Policy, Permissions-Policy, nosniff, X-Frame-Options and (over HTTPS) HSTS.
+  This is why every page's script lives in `js/pages/`; a test fails if an inline script is added.
+- **Offline**: attendance is never saved "later" in the background. Without a connection the app says so;
+  unsaved marks are kept on the device (student ids only) until they are saved, discarded or the user logs out.
+- **CSV files**: cells starting with `= + - @` get a leading `'` so a spreadsheet cannot run them as formulas.
 
 ### Main API endpoints
 
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` | login / logout / current user |
+| `POST /api/auth/password` | change your own password (`{"currentPassword", "newPassword"}`) |
 | `GET /api/me/sessions?date=` | a teacher's sessions for a date |
 | `GET /api/classes/{id}/day?date=` | one class on one date |
 | `GET` / `PUT /api/sessions/{id}/attendance` | student list / save (`{"absentStudentIds": [...]}`) |
 | `POST /api/sessions/{id}/cancel`, `/reopen`; `POST /api/sessions/extra` | cancel, reopen, extra session |
 | `GET /api/reports/classes/{id}/day`, `/range?period=WEEK\|MONTH\|OVERALL\|CUSTOM` | class reports |
 | `GET /api/reports/students/{id}` | student page |
-| `GET /api/reports/{day,range}.pdf`, `/{day,range,defaulters}.xlsx` | downloads (leave out `classId` for all classes) |
+| `GET /api/reports/{day,range}.pdf`, `/{day,range,defaulters}.xlsx`, `/{day,range}.csv` | downloads (leave out `classId` for all classes) |
+| `GET /.well-known/assetlinks.json` | links the Android app to the website (public) |
 | `GET /api/dashboard/teacher` | teacher dashboard cards |
 | `/api/admin/classes`, `/batches`, `/students`, `/subjects`, `/teachers`, `/timetable` | admin management |
 | `/api/admin/holidays`, `PUT /api/admin/settings`, `/api/admin/sessions/...` | holidays, rules, substitutes |
@@ -352,3 +378,24 @@ re-created; sessions already taken are never touched.
 | `Port 8080 was already in use` | another copy is running; stop it, or set `server.port=8081` |
 | A phone shows an old page after an update | pull down to refresh; the service worker updates static files in the background |
 | Start again with fresh demo data | `DROP DATABASE attendance_tracker;` then restart |
+
+---
+
+## 7. Install on phones, tablets and computers
+
+Every device uses the same website, server and database, so attendance marked on a phone shows up on the
+computer straight away.
+
+| Device | How |
+|---|---|
+| **Android** | Chrome: menu ⋮ → **Install app** / **Add to Home screen**. Or install the APK (below). |
+| **iPhone / iPad** | Safari: **Share** → **Add to Home Screen**. Opens full screen with the app icon. (There is no App Store app; that would need a Mac and an Apple Developer account.) |
+| **Windows / macOS** | Chrome or Edge: the install icon in the address bar (or menu → **Install Attendance Tracker**). Safari on macOS: **File → Add to Dock**. |
+| **Any browser** | just open https://attandtrackinger.qd.je |
+
+**Android APK.** `android/` holds a Trusted Web Activity: a small Android app (made with Google's
+Bubblewrap) that opens the website full screen. See [android/README.md](android/README.md) for building and
+signing it.
+
+**Offline.** Pages and styles are cached so the app opens on a bad connection, but loading and saving
+attendance always needs the server. An orange bar says when the device is offline.

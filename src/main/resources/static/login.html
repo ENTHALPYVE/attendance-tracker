@@ -7,6 +7,10 @@
     <meta name="theme-color" content="#2F5D50">
     <link rel="icon" type="image/png" href="/icons/favicon-32.png">
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Attendance">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <script src="/js/pwa.js" defer></script>
     <title>Log in · Attendance Tracker</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -36,36 +40,6 @@
 </main>
 
 <script src="/js/api.js"></script>
-<script>
-    const form = document.getElementById('login-form');
-    const errorBox = document.getElementById('login-error');
-    const button = document.getElementById('login-btn');
-
-    function showError(message) {
-        errorBox.textContent = message;
-        errorBox.hidden = false;
-    }
-
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const email = form.email.value.trim();
-        const password = form.password.value;
-        if (!email || !password) {
-            showError('Enter your email and password.');
-            return;
-        }
-        errorBox.hidden = true;
-        button.disabled = true;
-        button.textContent = 'Logging in...';
-        try {
-            await Api.login(email, password);
-            window.location.href = '/index.html';
-        } catch (e) {
-            showError(e.message);
-            button.disabled = false;
-            button.textContent = 'Log in';
-        }
-    });
-</script>
+<script src="/js/pages/login.js"></script>
 </body>
 </html>
