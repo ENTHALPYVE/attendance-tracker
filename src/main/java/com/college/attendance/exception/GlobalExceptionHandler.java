@@ -59,6 +59,14 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.FORBIDDEN, e.getMessage());
     }
 
+    /** Too many wrong passwords: 429 with the number of seconds to wait. */
+    @ExceptionHandler(TooManyAttemptsException.class)
+    public ResponseEntity<Map<String, Object>> tooManyAttempts(TooManyAttemptsException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.getRetryAfter().toSeconds())))
+                .body(Map.of("message", e.getMessage()));
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<Map<String, Object>> accessDenied(AccessDeniedException e) {
         return error(HttpStatus.FORBIDDEN, "You do not have permission to do this.");

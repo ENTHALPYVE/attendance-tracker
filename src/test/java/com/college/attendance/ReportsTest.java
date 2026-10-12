@@ -291,4 +291,31 @@ class ReportsTest extends ApiTestSupport {
         mvc.perform(get("/api/reports/month.pdf?month=Oct").session(admin)).andExpect(status().isBadRequest());
         mvc.perform(get("/api/reports/day.pdf?classId=" + classId).session(outsider)).andExpect(status().isForbidden());
     }
+
+    @Test
+    void csvDownloadsFollowTheSameNumbersAndAccessRules() throws Exception {
+        MockHttpServletResponse day = mvc.perform(get("/api/reports/day.csv?classId=" + classId + "&date=" + date).session(admin))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertThat(day.getContentType()).isEqualTo("text/csv;charset=UTF-8");
+        assertThat(day.getHeader("Content-Disposition")).contains("attendance-RP-").endsWith(".csv\"");
+        String text = day.getContentAsString(StandardCharsets.UTF_8);
+        assertThat(text).startsWith("﻿Class,Date,Roll No,Name,Batch,Attended,Held,Percent,Status,Absent in\r\n");
+        List<String> lines = text.lines().toList();
+        assertThat(lines).hasSize(4);                                    // header + 3 students
+        assertThat(lines).anyMatch(l -> l.contains(",2,Bala,B1,1,2,50.0,") && l.endsWith(",AOA"));
+        assertThat(lines).anyMatch(l -> l.contains(",1,Asha,B1,2,2,100.0,"));
+
+        String overall = mvc.perform(get("/api/reports/range.csv?classId=" + classId + "&period=OVERALL").session(admin))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(overall.lines().findFirst().orElseThrow()).endsWith("Status,Below threshold in");
+        assertThat(overall.lines().count()).isEqualTo(4);
+
+        // a lab-only teacher gets only their batch, like on the page; an outsider gets nothing
+        String labTeacher = mvc.perform(get("/api/reports/day.csv?classId=" + classId + "&date=" + date).session(teacherB))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(labTeacher.lines().count()).isEqualTo(3);            // header + rolls 1 and 2 (B1)
+        mvc.perform(get("/api/reports/day.csv?classId=" + classId).session(outsider)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/reports/range.csv?classId=" + classId + "&period=OVERALL").session(outsider))
+                .andExpect(status().isForbidden());
+    }
 }

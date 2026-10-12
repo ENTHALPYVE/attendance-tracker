@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Attendance reports: day-wise and month-wise, as JSON (for the page) and as PDF downloads.
+ * Attendance reports: day-wise and month-wise, as JSON (for the page) and as PDF, Excel and CSV downloads.
  * Admin sees every class; a teacher sees the classes / batches they teach (ReportAccessService).
  */
 @RestController
@@ -35,6 +35,7 @@ public class ReportController {
     private final ReportService reportService;
     private final ReportPdfService pdfService;
     private final ReportExcelService excelService;
+    private final ReportCsvService csvService;
     private final ReportAccessService accessService;
     private final ClassService classService;
     private final SessionGenerator generator;
@@ -42,11 +43,12 @@ public class ReportController {
     private final Clock clock;
 
     public ReportController(ReportService reportService, ReportPdfService pdfService, ReportExcelService excelService,
-                            ReportAccessService accessService, ClassService classService,
+                            ReportCsvService csvService, ReportAccessService accessService, ClassService classService,
                             SessionGenerator generator, StudentService studentService, Clock clock) {
         this.reportService = reportService;
         this.pdfService = pdfService;
         this.excelService = excelService;
+        this.csvService = csvService;
         this.accessService = accessService;
         this.classService = classService;
         this.generator = generator;
@@ -200,7 +202,44 @@ public class ReportController {
                 + "-" + period.toLowerCase() + "-" + first.from() + "-to-" + first.to() + ".xlsx");
     }
 
+    // ---------------------------------------------------------------- CSV downloads
+
+    /** One row per student for one day; leave out classId for every class the user may see. */
+    @GetMapping("/day.csv")
+    public ResponseEntity<byte[]> dayCsv(@RequestParam(required = false) Long classId,
+                                         @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                                         @AuthenticationPrincipal AppUserPrincipal user) {
+        LocalDate d = date == null ? LocalDate.now(clock) : date;
+        generator.ensureSessions(d);
+        List<DayReportDto> reports = classIds(classId, user).stream()
+                .map(id -> reportService.dayReport(id, d, user))
+                .toList();
+        return csv(csvService.dayReport(reports),
+                "attendance-" + namePart(reports.size() == 1 ? reports.get(0).className() : null) + "-" + d + ".csv");
+    }
+
+    /** One row per student for any period (see range above). */
+    @GetMapping("/range.csv")
+    public ResponseEntity<byte[]> rangeCsv(@RequestParam(required = false) Long classId, @RequestParam String period,
+                                           @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+                                           @RequestParam(required = false) String month,
+                                           @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                           @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+                                           @AuthenticationPrincipal AppUserPrincipal user) {
+        List<RangeReportDto> reports = rangeReports(classId, period, date, month, from, to, user);
+        RangeReportDto first = reports.get(0);
+        return csv(csvService.rangeReport(reports), "attendance-" + namePart(reports.size() == 1 ? first.className() : null)
+                + "-" + period.toLowerCase() + "-" + first.from() + "-to-" + first.to() + ".csv");
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    private static ResponseEntity<byte[]> csv(byte[] content, String filename) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(filename).build().toString())
+                .contentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8))
+                .body(content);
+    }
 
     private List<RangeReportDto> rangeReports(Long classId, String period, LocalDate date, String month,
                                               LocalDate from, LocalDate to, AppUserPrincipal user) {

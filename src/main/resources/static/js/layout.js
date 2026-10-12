@@ -42,6 +42,42 @@ const Layout = (() => {
         }
     }
 
+    /** Dialog for changing one's own password (POST /api/auth/password). */
+    function changePassword() {
+        UI.formDialog({
+            title: 'Change password',
+            submitLabel: 'Change password',
+            body: `
+                <div class="field">
+                    <label for="currentPassword">Current password</label>
+                    <input class="input" id="currentPassword" name="currentPassword" type="password"
+                           autocomplete="current-password" maxlength="72" required>
+                </div>
+                <div class="field">
+                    <label for="newPassword">New password</label>
+                    <input class="input" id="newPassword" name="newPassword" type="password"
+                           autocomplete="new-password" minlength="8" maxlength="72" required>
+                    <div class="small muted">At least 8 characters.</div>
+                </div>
+                <div class="field">
+                    <label for="confirmPassword">New password again</label>
+                    <input class="input" id="confirmPassword" name="confirmPassword" type="password"
+                           autocomplete="new-password" maxlength="72" required>
+                </div>`,
+            onSubmit: async (form) => {
+                if (form.newPassword.value !== form.confirmPassword.value) {
+                    throw new ApiError('The two new passwords are not the same.', 400,
+                        { fieldErrors: { confirmPassword: 'Type the same new password twice.' } });
+                }
+                const result = await Api.post('/api/auth/password', {
+                    currentPassword: form.currentPassword.value,
+                    newPassword: form.newPassword.value,
+                });
+                UI.notice(result.message);
+            },
+        });
+    }
+
     function navLinks(items, active, className) {
         return items.map(item => `
             <a class="${className}${item.key === active ? ' active' : ''}" href="${item.href}">
@@ -78,12 +114,19 @@ const Layout = (() => {
                 <div class="sidebar-footer">
                     <div class="user-name">${esc(displayName(user))}</div>
                     <div class="muted">${esc(user.email)}</div>
-                    <button class="btn-link" id="logout-btn" type="button">Log out</button>
+                    <div class="sidebar-actions">
+                        <button class="btn-link" id="password-btn" type="button">Change password</button>
+                        <button class="btn-link" id="logout-btn" type="button">Log out</button>
+                    </div>
                 </div>
             </aside>
             <header class="topbar">
                 <span>Attendance Tracker</span>
-                <button class="btn-link" id="logout-btn-mobile" type="button">Log out</button>
+                <span class="topbar-actions">
+                    <button class="icon-btn" id="password-btn-mobile" type="button" title="Change password"
+                            aria-label="Change password"><i data-lucide="key-round"></i></button>
+                    <button class="btn-link" id="logout-btn-mobile" type="button">Log out</button>
+                </span>
             </header>`);
         // Phones: at most 5 places in the bottom bar; the rest go under "More".
         const shown = items.length > 5 ? items.slice(0, 4) : items;
@@ -108,6 +151,8 @@ const Layout = (() => {
 
         document.getElementById('logout-btn').addEventListener('click', logout);
         document.getElementById('logout-btn-mobile').addEventListener('click', logout);
+        document.getElementById('password-btn').addEventListener('click', changePassword);
+        document.getElementById('password-btn-mobile').addEventListener('click', changePassword);
         lucide.createIcons();
         if (typeof UI !== 'undefined') UI.showFlash();   // e.g. "Attendance saved"
         return user;

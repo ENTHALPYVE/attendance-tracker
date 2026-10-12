@@ -28,8 +28,10 @@
         <div class="toolbar">
             <a class="btn btn-primary" id="pdf-btn" href="#" download><i data-lucide="download"></i>PDF</a>
             <a class="btn" id="excel-btn" href="#" download><i data-lucide="sheet"></i>Excel</a>
+            <a class="btn" id="csv-btn" href="#" download><i data-lucide="file-text"></i>CSV</a>
             <a class="btn" id="defaulters-btn" href="#" download><i data-lucide="user-x"></i>Defaulters (Excel)</a>
             <a class="btn" id="pdf-all-btn" href="#" download><i data-lucide="files"></i>All classes (PDF)</a>
+            <button class="btn" id="print-btn" type="button"><i data-lucide="printer"></i>Print</button>
         </div>
     </div>
 
@@ -145,6 +147,7 @@
                 report = await Api.get(`/api/reports/classes/${classId}/day?date=${date}`);
                 $('pdf-btn').href = `/api/reports/day.pdf?classId=${classId}&date=${date}`;
                 $('excel-btn').href = `/api/reports/day.xlsx?classId=${classId}&date=${date}`;
+                $('csv-btn').href = `/api/reports/day.csv?classId=${classId}&date=${date}`;
                 $('pdf-all-btn').href = `/api/reports/day.pdf?date=${date}`;
             } else {
                 if (tab === 'custom' && (!$('from-input').value || !$('to-input').value)) {
@@ -157,6 +160,7 @@
                 report = await Api.get(`/api/reports/classes/${classId}/range?${p}`);
                 $('pdf-btn').href = `/api/reports/range.pdf?classId=${classId}&${p}`;
                 $('excel-btn').href = `/api/reports/range.xlsx?classId=${classId}&${p}`;
+                $('csv-btn').href = `/api/reports/range.csv?classId=${classId}&${p}`;
                 $('defaulters-btn').href = `/api/reports/defaulters.xlsx?classId=${classId}&${p}`;
                 $('pdf-all-btn').href = `/api/reports/range.pdf?${p}`;
             }
@@ -328,12 +332,14 @@
         draw();
     });
 
+    $('print-btn').addEventListener('click', () => window.print());
+
     (async () => {
         await Layout.init('reports');
         classes = await Api.get('/api/reports/classes');
         if (classes.length === 0) {
             document.querySelector('.card').innerHTML = '<div class="empty">You have no classes to report on yet.</div>';
-            ['pdf-btn', 'excel-btn', 'defaulters-btn', 'pdf-all-btn'].forEach(id => $(id).hidden = true);
+            ['pdf-btn', 'excel-btn', 'csv-btn', 'defaulters-btn', 'pdf-all-btn', 'print-btn'].forEach(id => $(id).hidden = true);
             return;
         }
         if (classes.length < 2) $('pdf-all-btn').hidden = true;

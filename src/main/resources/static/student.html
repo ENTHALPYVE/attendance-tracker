@@ -32,6 +32,7 @@
                 <button class="tab" role="tab" data-period="MONTH" type="button">Month</button>
             </div>
             <input class="input" id="month-input" type="month" aria-label="Month" hidden>
+            <button class="btn" id="print-btn" type="button"><i data-lucide="printer"></i>Print</button>
         </div>
     </div>
 
@@ -336,6 +337,8 @@
 
     document.querySelectorAll('[data-period]').forEach(b => b.addEventListener('click', () => setPeriod(b.dataset.period)));
     $('month-input').addEventListener('change', () => { if ($('month-input').value) load().catch(showError); });
+
+    document.getElementById('print-btn').addEventListener('click', () => window.print());
 
     (async () => {
         await Layout.init('reports');
