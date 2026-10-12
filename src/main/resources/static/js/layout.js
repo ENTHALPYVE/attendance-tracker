@@ -31,6 +31,17 @@ const Layout = (() => {
         return name || (user.role === 'ADMIN' ? 'Admin' : 'Teacher');
     }
 
+    /** Unsaved attendance marks kept by session.html; not left behind on a shared device. */
+    function clearDrafts() {
+        try {
+            Object.keys(localStorage)
+                .filter(key => key.startsWith('attendance-draft-'))
+                .forEach(key => localStorage.removeItem(key));
+        } catch (e) {
+            // storage blocked: nothing was stored
+        }
+    }
+
     function navLinks(items, active, className) {
         return items.map(item => `
             <a class="${className}${item.key === active ? ' active' : ''}" href="${item.href}">
@@ -39,6 +50,7 @@ const Layout = (() => {
     }
 
     async function logout() {
+        clearDrafts();
         try {
             await Api.logout();
         } finally {
