@@ -91,6 +91,9 @@ host that builds Docker images. Free setup: the app on **Render** (free web serv
 
    (`ADMIN_PASSWORD` / `TEACHER_PASSWORD` are only used to create the demo accounts on the very first start.)
    (`MYSQLDATABASE=defaultdb`, `MYSQLUSER=avnadmin` and `COOKIE_SECURE=true` are already in `render.yaml`.)
+   Instead of the `MYSQL...` variables you can set the whole connection as `DB_URL`
+   (`jdbc:mysql://<host>:<port>/defaultdb?sslMode=REQUIRED&serverTimezone=Asia/Kolkata&rewriteBatchedStatements=true`),
+   `DB_USERNAME` and `DB_PASSWORD`; when set, these win over the `MYSQL...` ones.
 4. The first build takes about 5-10 minutes. The app is then live at `https://attendance-tracker-xxxx.onrender.com`
    (HTTPS, so "Add to Home Screen" installs it fully on phones). The demo data and logins are created
    on the first start; later starts keep the data.
@@ -104,7 +107,15 @@ host that builds Docker images. Free setup: the app on **Render** (free web serv
 
 **Free plan limits:** the Render service sleeps after 15 minutes without visitors; the next visit wakes it,
 which takes 1-2 minutes (open the link a few minutes before a demo). Aiven may power off a free database
-that is not used for a long time (it sends an email first). Free plans are for demos, not for a whole college.
+that is not used for a long time (it sends an email first). If the database is off or unreachable, the app
+cannot start and Render reports a failed deploy: power the service on again in Aiven, then click
+**Manual Deploy -> Restart service** in Render. Free plans are for demos, not for a whole college.
+
+**Keep it awake (free):** create a free [UptimeRobot](https://uptimerobot.com) HTTP(s) monitor for
+`https://<your-site>/health` with a 5-minute interval. `/health` runs a tiny database query, so Render does
+not put the app to sleep and Aiven does not power the database off as unused; UptimeRobot also emails you if
+the site goes down. One always-on service uses about 744 of Render's 750 free hours a month, so keep only
+one free Render service.
 
 **Paid alternative (no sleeping): Railway.** New Project -> Deploy from GitHub repo, then Create -> Database ->
 MySQL, and in the app's Variables set `MYSQLHOST=${{MySQL.MYSQLHOST}}` (and the same for `MYSQLPORT`,
