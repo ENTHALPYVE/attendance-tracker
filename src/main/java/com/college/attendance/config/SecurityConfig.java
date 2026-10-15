@@ -9,8 +9,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.authentication.InternalAuthenticationServiceException;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -121,6 +123,13 @@ public class SecurityConfig {
                     writeJson(response, HttpStatus.OK, UserDto.from(user));
                 })
                 .failureHandler((request, response, exception) -> {
+                    if (exception instanceof InternalAuthenticationServiceException) {
+                        // The user could not be looked up (database down): not a wrong password.
+                        response.setHeader(HttpHeaders.RETRY_AFTER, "30");
+                        writeJson(response, HttpStatus.SERVICE_UNAVAILABLE, Map.of("message",
+                            "The database cannot be reached right now. Please try again in a minute."));
+                        return;
+                    }
                     loginLimit.recordFailure(request);
                     writeJson(response, HttpStatus.UNAUTHORIZED,
                         Map.of("message", "Incorrect email or password."));

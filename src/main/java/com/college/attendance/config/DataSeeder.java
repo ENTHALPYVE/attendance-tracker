@@ -5,7 +5,6 @@ import com.college.attendance.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -24,11 +23,12 @@ import static java.time.DayOfWeek.*;
  * 1 admin, 8 teachers, class SE-CO-A (batches B1/B2/B3, 20 students each),
  * 7 subjects, a full weekly timetable and about 6 weeks of random attendance.
  *
- * Runs once at start-up, only if app.seed-demo-data=true and the users table is empty.
+ * Called by DatabaseSetup once the database can be reached; only does something if
+ * app.seed-demo-data=true and the users table is empty.
  * A fixed random seed is used so the demo data is the same on every machine.
  */
 @Component
-public class DataSeeder implements CommandLineRunner {
+public class DataSeeder {
 
     private static final Logger log = LoggerFactory.getLogger(DataSeeder.class);
 
@@ -111,12 +111,16 @@ public class DataSeeder implements CommandLineRunner {
         this.passwordEncoder = passwordEncoder;
     }
 
-    @Override
     @Transactional
-    public void run(String... args) {
+    public void seedIfEmpty() {
         if (!enabled || userRepository.count() > 0) {
             return;
         }
+        // Clear what a failed earlier attempt (rolled back) may have left in these fields.
+        batches.clear();
+        subjects.clear();
+        teachers.clear();
+        timetable.clear();
         log.info("Empty database found - loading demo data...");
         seedUsers();
         List<Student> students = seedClassAndStudents();
