@@ -107,9 +107,10 @@ host that builds Docker images. Free setup: the app on **Render** (free web serv
 
 **Free plan limits:** the Render service sleeps after 15 minutes without visitors; the next visit wakes it,
 which takes 1-2 minutes (open the link a few minutes before a demo). Aiven may power off a free database
-that is not used for a long time (it sends an email first). If the database is off or unreachable, the app
-cannot start and Render reports a failed deploy: power the service on again in Aiven, then click
-**Manual Deploy -> Restart service** in Render. Free plans are for demos, not for a whole college.
+that is not used for a long time (it sends an email first). If the database is off or unreachable, the
+website still opens, but logging in and every page with data show "The database cannot be reached right now".
+Power the service on again in Aiven; within 30 seconds the app connects by itself (no restart needed).
+Free plans are for demos, not for a whole college.
 
 **Keep it awake (free):** create a free [UptimeRobot](https://uptimerobot.com) HTTP(s) monitor for
 `https://<your-site>/health` with a 5-minute interval. `/health` runs a tiny database query, so Render does
